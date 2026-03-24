@@ -4,13 +4,14 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.hibernate.annotations.CreationTimestamp;
 
 @Entity
 @Table(name = "usuarios") // Tem que ser exatamente o nome da tabela no Postgres
 public class Usuario {
 
-  @Id
-@GeneratedValue(generator = "UUID")
+@Id
+@GeneratedValue(strategy = GenerationType.UUID) // Correção para Spring Boot 3+
 @Column(name = "id", updatable = false, nullable = false)
 private UUID id;
 
@@ -28,7 +29,8 @@ private UUID id;
     private String tipo = "user";
 
     // O banco de dados já gera a data automaticamente, então dizemos pro Java apenas ler
-    @Column(name = "created_at", insertable = false, updatable = false)
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
     // --- GETTERS E SETTERS ---
