@@ -44,6 +44,23 @@ const [form, setForm] = useState({
   previewImagem: null
 });
 
+// --- CARREGAR MÚSICAS DO BANCO ---
+  const carregarMusicas = async () => {
+    try {
+      const res = await fetch(`${API_URL}/musicas`);
+      if (res.ok) {
+        const dados = await res.json();
+        setMusicas(dados);
+      }
+    } catch (err) {
+      console.error("Erro ao carregar músicas:", err);
+    }
+  };
+
+  // Esse hook faz com que as músicas sejam buscadas ASSIM QUE O SITE ABRIR
+  useEffect(() => {
+    carregarMusicas();
+  }, []);
   // Começamos com a lista vazia (sem os exemplos antigos)
   const [playlists, setPlaylists] = useState([]);
   const [playlistAtiva, setPlaylistAtiva] = useState(null); // null significa "Home/Todas"
@@ -71,7 +88,22 @@ const [form, setForm] = useState({
     return primeiraMusica ? `${API_URL}/uploads/${primeiraMusica.caminhoImagem}` : null;
   };
 
-const [usuario, setUsuario] = useState(null);
+const [usuario, setUsuario] = useState(null); // Você já tem essa linha!
+
+  // --- NOVO: Carrega as playlists salvas sempre que a conta mudar ---
+  useEffect(() => {
+    if (usuario && usuario.email) {
+      const gavetaDoUsuario = localStorage.getItem(`playlists_${usuario.email}`);
+      if (gavetaDoUsuario) {
+        setPlaylists(JSON.parse(gavetaDoUsuario));
+      } else {
+        setPlaylists([]); // Conta nova, sem playlists
+      }
+    } else {
+      setPlaylists([]); // Deslogou, esconde tudo
+    }
+    setPlaylistAtiva(null); // Volta pra Home
+  }, [usuario]);
 const [mostrarAuth, setMostrarAuth] = useState(false); // Mudamos o nome para Auth (Abrange ambos)
 const [estaCadastrando, setEstaCadastrando] = useState(false); // Alterna entre Login e Cadastro
 const [dadosAuth, setDadosAuth] = useState({ nome: '', email: '', senha: '' });
@@ -163,44 +195,71 @@ const realizarLogin = async (e) => {
     const next = musicas[idx + dir] || (dir > 0 ? musicas[0] : musicas[musicas.length - 1]);
     if (next) aoDarPlay(next);
   };
-  const salvarMusica = async (e) => {
-  e.preventDefault();
-  const formData = new FormData();
-  formData.append('titulo', form.titulo);
-  formData.append('artista', form.artista);
-  formData.append('album', form.album);
-  formData.append('mp3', form.arquivoMp3);
-  formData.append('imagem', form.arquivoImagem);
-  // A duração e created_at geralmente o Back-end calcula, 
-  // mas se precisar enviar, adicione aqui.
+  const salvarNovaPlaylist = (e) => {
+    e.preventDefault();
+    if (formPlaylist.nome.trim() !== "") {
+      const novaPlaylist = { 
+        id: Date.now(), 
+        nome: formPlaylist.nome, 
+        musicasIds: [],
+        capaPersonalizada: formPlaylist.previewImagem 
+      };
+      
+      const novasPlaylists = [...playlists, novaPlaylist];
+      setPlaylists(novasPlaylists);
+      
+      // SALVA NA GAVETINHA DO USUÁRIO
+      if (usuario) {
+        localStorage.setItem(`playlists_${usuario.email}`, JSON.stringify(novasPlaylists));
+      }
 
-  try {
-    const res = await fetch(`${API_URL}/musicas`, {
-      method: 'POST',
-      body: formData
-    });
-    if (res.ok) {
-      alert("Música salva com sucesso!");
-      setMostrarAdmin(false);
-      // Atualiza a lista automaticamente
-      fetch(`${API_URL}/musicas`).then(r => r.json()).then(setMusicas);
+      setPlaylistAtiva(novaPlaylist); 
+      setMostrarModalPlaylist(false); 
+      setFormPlaylist({ nome: '', arquivoImagem: null, previewImagem: null }); 
     }
-  } catch (err) {
-    console.error("Erro ao salvar:", err);
-  }
-};
+  };
+ const salvarMusica = async (e) => {
+    e.preventDefault();
+    const formData = new FormData();
+    formData.append('titulo', form.titulo);
+    formData.append('artista', form.artista);
+    formData.append('album', form.album);
+    formData.append('mp3', form.arquivoMp3); // Tem que bater com o nome esperado no Java
+    formData.append('imagem', form.arquivoImagem); // Tem que bater com o nome esperado no Java
+
+    try {
+      const res = await fetch(`${API_URL}/musicas`, {
+        method: 'POST',
+        body: formData
+      });
+      if (res.ok) {
+        alert("Música salva com sucesso!");
+        setMostrarAdmin(false); // Fecha a tela de admin
+        carregarMusicas(); // <--- ATUALIZA A LISTA NA TELA NA MESMA HORA
+      } else {
+        alert("Erro ao salvar música. Verifique o servidor.");
+      }
+    } catch (err) {
+      console.error("Erro ao salvar:", err);
+    }
+  };
 
   const progressPercent = (tempoAtual / duracaoTotal) * 100 || 0;
   const volumePercent = volume * 100;
 
   return (
     <div className="flex flex-col h-screen bg-black text-white overflow-hidden font-sans select-none">
-     {/* --- AREA: HEADER --- */}
-<header className="h-16 bg-black/95 backdrop-blur-md z-50 flex items-center justify-between px-6 shadow-xl">  <div className="flex items-center gap-4">
-    <div className="flex items-center">
-    <img src={logo} alt="Lovefy Logo" className="h-10 w-auto hover:scale-120 transition-transform cursor-pointer" />
-  </div>
-  </div>
+    <header className="h-16 bg-black/95 backdrop-blur-md z-50 flex items-center justify-between px-6 shadow-xl">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center">
+            {/* NOVO LOGO EM TEXTO */}
+            <h1 className="text-3xl font-black text-[#1db954] tracking-tighter cursor-pointer hover:scale-105 transition-transform">
+              Lovefy
+            </h1>
+          </div>
+        </div>
+
+        <div className="flex-1 max-w-md mx-4 relative"> </div>
 
   <div className="flex-1 max-w-md mx-4 relative">
     <div className="absolute inset-y-0 left-3 flex items-center text-gray-400"><Search size={18} /></div>
@@ -481,13 +540,18 @@ const realizarLogin = async (e) => {
                           // Cria um texto com as opções de playlist
                           const opcoes = playlists.map((p, idx) => `${idx + 1} - ${p.nome}`).join('\n');
                           const escolha = window.prompt(`Digite o número da playlist para adicionar '${m.titulo}':\n\n${opcoes}`);
-                          
                           const index = parseInt(escolha) - 1;
                           if (!isNaN(index) && playlists[index]) {
                             const novaLista = [...playlists];
                             if (!novaLista[index].musicasIds.includes(m.id)) {
                               novaLista[index].musicasIds.push(m.id);
                               setPlaylists(novaLista);
+                              
+                              // SALVA NA GAVETINHA DO USUÁRIO
+                              if (usuario) {
+                                localStorage.setItem(`playlists_${usuario.email}`, JSON.stringify(novaLista));
+                              }
+                              
                               alert("Música adicionada!");
                             } else {
                               alert("Essa música já está na playlist!");

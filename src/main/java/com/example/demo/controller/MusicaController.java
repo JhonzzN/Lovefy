@@ -20,17 +20,15 @@ public class MusicaController {
     @Autowired
     private FileStorageService fileStorageService;
 
-    // Ajustado para Multipart: Recebe os arquivos e os textos
-   @PostMapping
+    @PostMapping
     public ResponseEntity<Musica> criarMusica(
             @RequestParam("titulo") String titulo,
             @RequestParam("artista") String artista,
             @RequestParam(value = "album", required = false) String album,
-            @RequestParam("duracao") Integer duracao,
-            @RequestParam("mp3") MultipartFile audioFile, // Alterado de audioFile para mp3
-            @RequestParam(value = "imagem", required = false) MultipartFile coverImage) { // Alterado de coverImage para imagem{
+            @RequestParam("mp3") MultipartFile audioFile, 
+            @RequestParam(value = "imagem", required = false) MultipartFile coverImage) { 
 
-        // 1. Salva os arquivos no disco e pega os nomes/caminhos
+        // 1. Guarda os ficheiros no disco e obtém os caminhos
         String caminhoMp3 = fileStorageService.storeFile(audioFile);
         String caminhoImagem = (coverImage != null && !coverImage.isEmpty()) 
                                 ? fileStorageService.storeFile(coverImage) 
@@ -41,11 +39,11 @@ public class MusicaController {
         novaMusica.setTitulo(titulo);
         novaMusica.setArtista(artista);
         novaMusica.setAlbum(album);
-        novaMusica.setDuracao(duracao);
+        novaMusica.setDuracao(0); // Definimos 0 por defeito, pois o React não envia a duração
         novaMusica.setCaminhoMp3(caminhoMp3);
         novaMusica.setCaminhoImagem(caminhoImagem);
 
-        // 3. Salva no banco
+        // 3. Guarda na base de dados
         return ResponseEntity.ok(musicaRepository.save(novaMusica));
     }
 
@@ -54,7 +52,6 @@ public class MusicaController {
         return ResponseEntity.ok(musicaRepository.findAll());
     }
     
-    // Opcional: Buscar uma música específica por ID (agora Long)
     @GetMapping("/{id}")
     public ResponseEntity<Musica> buscarPorId(@PathVariable Long id) {
         return musicaRepository.findById(id)

@@ -12,25 +12,26 @@ import java.nio.file.Paths;
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
-    @Value("${file.upload-dir:./uploads}")
+    // Define "uploads" como padrão se não houver nada no application.properties
+    @Value("${file.upload-dir:uploads}")
     private String uploadDir;
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        // Pega o caminho absoluto da pasta no seu computador
+        // Pega o caminho absoluto da pasta no seu computador (Essa sua lógica está perfeita!)
         Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
-        String absolutePath = uploadPath.toUri().toString(); // Ex: file:/C:/seu-projeto/uploads/
+        String absolutePath = uploadPath.toUri().toString();
 
-        // Toda vez que o front-end chamar http://localhost:8080/uploads/arquivo.mp3, ele busca na pasta
+        // Toda vez que o front-end chamar /uploads/arquivo.mp3, ele busca na pasta física
         registry.addResourceHandler("/uploads/**")
                 .addResourceLocations(absolutePath);
     }
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        // Libera a API para receber requisições do seu Front-end
+        // Libera a API para receber requisições do seu Front-end React
         registry.addMapping("/**")
-                .allowedOrigins("*") // Em produção, a gente troca pelo endereço real do front
+                .allowedOrigins("http://localhost:5173") // <-- Trocamos o "*" pelo endereço exato do React
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*");
     }
