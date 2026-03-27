@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import logo from './assets/LogoLovefy.png' // Ou logo.svg
 
 // --- SEUS COMPONENTES DE ÍCONES (SVG) ---
+const Globe = ({size=14}) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>);
+const Lock = ({size=14}) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>);
 const PlayCircle = ({size=32}) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="white"><circle cx="12" cy="12" r="10" fill="white"></circle><polygon points="10 8 16 12 10 16 10 8" fill="black"></polygon></svg>);
 const PauseCircle = ({size=32}) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="white"><circle cx="12" cy="12" r="10" fill="white"></circle><line x1="10" y1="15" x2="10" y2="9" stroke="black" strokeWidth="2"></line><line x1="14" y1="15" x2="14" y2="9" stroke="black" strokeWidth="2"></line></svg>);
 const SkipBack = ({size=22}) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>);
@@ -23,6 +25,7 @@ const API_URL = 'http://localhost:8082';
 const formatarTempo = (s) => isNaN(s) ? '0:00' : `${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,'0')}`;
 
 function App() {
+  const [termoBusca, setTermoBusca] = useState('');
   const [musicas, setMusicas] = useState([]);
   const [musicaAtual, setMusicaAtual] = useState(null);
   const [estaTocando, setEstaTocando] = useState(false);
@@ -34,6 +37,8 @@ function App() {
   const [hoverProgresso, setHoverProgresso] = useState(false);
   const [hoverVolume, setHoverVolume] = useState(false);
   const [mostrarAdmin, setMostrarAdmin] = useState(false);
+  const [pesquisaFoco, setPesquisaFoco] = useState(false); // Controla se a caixa flutuante aparece
+  const [viewAtiva, setViewAtiva] = useState(null); // Guarda os dados do Artista ou Álbum clicado
 const [form, setForm] = useState({
   titulo: '',
   artista: '',
@@ -61,29 +66,38 @@ const [form, setForm] = useState({
   useEffect(() => {
     carregarMusicas();
   }, []);
-  // Começamos com a lista vazia (sem os exemplos antigos)
+// --- ESTADOS DAS PLAYLISTS ---
   const [playlists, setPlaylists] = useState([]);
-  const [playlistAtiva, setPlaylistAtiva] = useState(null); // null significa "Home/Todas"
+  const [playlistAtiva, setPlaylistAtiva] = useState(null); 
+  const [mostrarModalPlaylist, setMostrarModalPlaylist] = useState(false);
+  const [novaPlaylist, setNovaPlaylist] = useState({ nome: '', isGlobal: false });
 
-  // Função para criar uma playlist nova vazia
-  const criarNovaPlaylist = () => {
-    const nomeDigitado = window.prompt("Dê um nome para sua nova playlist:");
-    
-    // Se o usuário digitou um nome e não cancelou
-    if (nomeDigitado && nomeDigitado.trim() !== "") {
-      const novaPlaylist = { 
-        id: Date.now(), // Gera um ID único na hora
-        nome: nomeDigitado, 
-        musicasIds: []  // Começa sem nenhuma música
+const criarNovaPlaylistVisual = (e) => {
+    e.preventDefault();
+    if (novaPlaylist.nome.trim() !== '') {
+      const nova = {
+        id: Date.now(), // Temporário até ligar com o Java
+        nome: novaPlaylist.nome,
+        isGlobal: novaPlaylist.isGlobal,
+        musicasIds: []
       };
-      setPlaylists([...playlists, novaPlaylist]);
-      setPlaylistAtiva(novaPlaylist); // Já abre a playlist que acabou de criar
+      
+      const novasPlaylists = [...playlists, nova];
+      setPlaylists(novasPlaylists); // Atualiza a tela
+      
+      // SALVA NA GAVETINHA DO USUÁRIO
+      if (usuario) {
+        localStorage.setItem(`playlists_${usuario.email}`, JSON.stringify(novasPlaylists));
+      }
+
+      setMostrarModalPlaylist(false);
+      setNovaPlaylist({ nome: '', isGlobal: false });
+      setPlaylistAtiva(nova); // Abre a playlist automaticamente
     }
   };
-
-  // Função aprimorada para a capa da playlist
+  
   const pegarCapaPlaylist = (musicasIds) => {
-    if (!musicasIds || musicasIds.length === 0) return null; // Retorna null se estiver vazia
+    if (!musicasIds || musicasIds.length === 0) return null;
     const primeiraMusica = musicas.find(m => m.id === musicasIds[0]);
     return primeiraMusica ? `${API_URL}/uploads/${primeiraMusica.caminhoImagem}` : null;
   };
@@ -109,9 +123,18 @@ const [estaCadastrando, setEstaCadastrando] = useState(false); // Alterna entre 
 const [dadosAuth, setDadosAuth] = useState({ nome: '', email: '', senha: '' });
 
 // Músicas que serão mostradas na lista principal (filtradas ou todas)
-  const musicasExibidas = playlistAtiva 
-  ? musicas.filter(m => playlistAtiva.musicasIds.includes(m.id)) 
-  : musicas;
+const musicasExibidas = playlistAtiva 
+    ? musicas.filter(m => playlistAtiva.musicasIds?.includes(m.id))
+    : viewAtiva
+      ? (viewAtiva.type === 'artist' 
+          ? musicas.filter(m => m.artista === viewAtiva.name) 
+          : musicas.filter(m => m.album === viewAtiva.name))
+      : (termoBusca !== '' && !pesquisaFoco)
+        ? musicas.filter(m => {
+            const termo = termoBusca.toLowerCase();
+            return (m.titulo.toLowerCase().includes(termo) || m.artista.toLowerCase().includes(termo) || (m.album && m.album.toLowerCase().includes(termo)));
+          })
+        : musicas;
 
   const audioRef = useRef(null);
 
@@ -195,29 +218,7 @@ const realizarLogin = async (e) => {
     const next = musicas[idx + dir] || (dir > 0 ? musicas[0] : musicas[musicas.length - 1]);
     if (next) aoDarPlay(next);
   };
-  const salvarNovaPlaylist = (e) => {
-    e.preventDefault();
-    if (formPlaylist.nome.trim() !== "") {
-      const novaPlaylist = { 
-        id: Date.now(), 
-        nome: formPlaylist.nome, 
-        musicasIds: [],
-        capaPersonalizada: formPlaylist.previewImagem 
-      };
-      
-      const novasPlaylists = [...playlists, novaPlaylist];
-      setPlaylists(novasPlaylists);
-      
-      // SALVA NA GAVETINHA DO USUÁRIO
-      if (usuario) {
-        localStorage.setItem(`playlists_${usuario.email}`, JSON.stringify(novasPlaylists));
-      }
 
-      setPlaylistAtiva(novaPlaylist); 
-      setMostrarModalPlaylist(false); 
-      setFormPlaylist({ nome: '', arquivoImagem: null, previewImagem: null }); 
-    }
-  };
  const salvarMusica = async (e) => {
     e.preventDefault();
     const formData = new FormData();
@@ -249,7 +250,8 @@ const realizarLogin = async (e) => {
 
   return (
     <div className="flex flex-col h-screen bg-black text-white overflow-hidden font-sans select-none">
-    <header className="h-16 bg-black/95 backdrop-blur-md z-50 flex items-center justify-between px-6 shadow-xl">
+    {/* --- AREA: HEADER --- */}
+      <header className="h-16 bg-black/95 backdrop-blur-md z-50 flex items-center justify-between px-6 shadow-xl">
         <div className="flex items-center gap-4">
           <div className="flex items-center">
             {/* NOVO LOGO EM TEXTO */}
@@ -258,75 +260,135 @@ const realizarLogin = async (e) => {
             </h1>
           </div>
         </div>
-
-        <div className="flex-1 max-w-md mx-4 relative"> </div>
-
-  <div className="flex-1 max-w-md mx-4 relative">
-    <div className="absolute inset-y-0 left-3 flex items-center text-gray-400"><Search size={18} /></div>
-    <input type="text" placeholder="O que você quer ouvir?" className="w-full bg-[#242424] hover:bg-[#2a2a2a] border-none rounded-full py-2 pl-10 pr-4 text-sm focus:ring-1 focus:ring-white transition-all outline-none" />
-  </div>
-
-
-{/* Direita: Notificações e Perfil/Login */}
-<div className="flex items-center gap-6 relative">
-  
-  <button className="text-gray-400 hover:text-white transition-colors p-1">
-    <Bell />
-  </button>
-  
-  {usuario ? (
-    /* Se estiver logado: Mostra o círculo de perfil */
-    <button 
-      onClick={() => setPerfilAberto(!perfilAberto)} 
-      className="bg-white/10 rounded-full p-1 flex items-center transition border border-transparent"
-    >
-      <div className="bg-gradient-to-tr from-[#1db954] to-blue-500 rounded-full p-1.5 hover:scale-110 transition-transform">
-        <User />
-      </div>
-    </button>
-  ) : (
-    /* Se NÃO estiver logado: Mostra o botão "Entrar" */
-    <button 
-      onClick={() => setMostrarAuth(true)}
-      className="bg-white text-black text-sm font-bold py-2 px-6 rounded-full hover:scale-105 transition-all"
-    >
-      Entrar
-    </button>
-  )}
-  
-  {perfilAberto && usuario && (
-    <div className="absolute top-12 right-0 bg-[#282828] shadow-2xl rounded-md p-1 w-48 animate-fadeIn z-50 border border-white/5">
-      <div className="p-3 border-b border-white/5">
-        <p className="text-sm font-bold">{usuario.nome}</p>
         
-        {/* Mostra se é ADMIN ou Usuário Comum */}
-        {usuario.role === 'ADMIN' ? (
-          <p className="text-[10px] text-red-500 font-black uppercase tracking-widest mt-1">👑 Administrador</p>
-        ) : (
-          <p className="text-[10px] text-[#1db954] mt-1">Conta Verificada</p>
-        )}
-        
-      </div>
-      <button 
-        onClick={() => { 
-          setUsuario(null); 
-          setPerfilAberto(false); 
-          setEstaCadastrando(false);
-          setMostrarAuth(true);
-        }} 
-        className="w-full text-left p-2 text-sm text-gray-400 hover:text-white hover:bg-white/5 rounded transition-all"
-      >
-        Sair
-      </button>
-    </div>
-  )}
-</div>
-{/* REMOVIDO: O botão que estava aqui fora foi apagado para não esticar o layout */}
+        {/* BARRA DE PESQUISA COM A CAIXA FLUTUANTE */}
+        <div className="flex-1 max-w-md mx-4 relative">
+          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400 z-10">
+            <Search size={18} />
+          </div>
+          <input 
+            type="text" 
+            placeholder="Música, Artista ou Álbum..." 
+            value={termoBusca}
+            onFocus={() => setPesquisaFoco(true)} // Abre o menu ao clicar
+            onBlur={() => setTimeout(() => setPesquisaFoco(false), 200)} // Fecha o menu ao clicar fora (com atraso para dar tempo de clicar no item)
+            onChange={(e) => {
+              setTermoBusca(e.target.value);
+              // Quando o usuário digitar algo, sai das playlists e vai para os resultados!
+              if (e.target.value.trim() !== '') {
+                setPlaylistAtiva(null); 
+                setMostrarAdmin(false);
+              }
+            }}
+            className="w-full h-10 bg-[#2a2a2a] text-white rounded-full pl-10 pr-4 outline-none focus:ring-2 focus:ring-white/20 transition-all placeholder-gray-500 font-medium text-sm relative z-20" 
+          />
 
-</header>
+          {/* CAIXA FLUTUANTE DE RESULTADOS */}
+          {pesquisaFoco && termoBusca.trim() !== '' && (
+            <div className="absolute top-12 left-0 w-full bg-[#282828] border border-white/5 rounded-xl shadow-2xl z-50 max-h-[400px] overflow-y-auto p-2 animate-fadeIn flex flex-col gap-1">
+              
+              {/* RESULTADOS: MÚSICAS */}
+              {musicas.filter(m => m.titulo.toLowerCase().includes(termoBusca.toLowerCase())).slice(0, 3).map(m => (
+                <div key={`musica-${m.id}`} onClick={() => { aoDarPlay(m); setPesquisaFoco(false); setTermoBusca(''); }} className="flex items-center gap-3 p-2 hover:bg-white/10 rounded-md cursor-pointer transition-colors group">
+                  <img src={`${API_URL}/uploads/${m.caminhoImagem}`} className="w-10 h-10 rounded object-cover shadow-md" alt="Capa" />
+                  <div className="flex flex-col flex-1 overflow-hidden">
+                    <span className="text-sm font-bold text-white truncate group-hover:text-[#1db954]">{m.titulo}</span>
+                    <span className="text-xs text-gray-400 truncate">Música • {m.artista}</span>
+                  </div>
+                </div>
+              ))}
+
+              {/* RESULTADOS: ARTISTAS */}
+              {[...new Set(musicas.filter(m => m.artista.toLowerCase().includes(termoBusca.toLowerCase())).map(m => m.artista))].slice(0, 2).map(artista => (
+                <div key={`artista-${artista}`} onClick={() => { setViewAtiva({ type: 'artist', name: artista }); setPesquisaFoco(false); setPlaylistAtiva(null); setMostrarAdmin(false); setTermoBusca(''); }} className="flex items-center gap-3 p-2 hover:bg-white/10 rounded-md cursor-pointer transition-colors group">
+                  <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center shrink-0 shadow-md">
+                    <User />
+                  </div>
+                  <div className="flex flex-col flex-1 overflow-hidden">
+                    <span className="text-sm font-bold text-white truncate group-hover:text-[#1db954]">{artista}</span>
+                    <span className="text-xs text-gray-400">Artista</span>
+                  </div>
+                </div>
+              ))}
+
+              {/* RESULTADOS: ÁLBUNS */}
+              {[...new Map(musicas.filter(m => m.album && m.album.toLowerCase().includes(termoBusca.toLowerCase())).map(m => [m.album, m])).values()].slice(0, 2).map(m => (
+                <div key={`album-${m.album}`} onClick={() => { setViewAtiva({ type: 'album', name: m.album, capa: m.caminhoImagem, artista: m.artista }); setPesquisaFoco(false); setPlaylistAtiva(null); setMostrarAdmin(false); setTermoBusca(''); }} className="flex items-center gap-3 p-2 hover:bg-white/10 rounded-md cursor-pointer transition-colors group">
+                  <img src={`${API_URL}/uploads/${m.caminhoImagem}`} className="w-10 h-10 rounded object-cover shadow-md" alt="Capa Álbum" />
+                  <div className="flex flex-col flex-1 overflow-hidden">
+                    <span className="text-sm font-bold text-white truncate group-hover:text-[#1db954]">{m.album}</span>
+                    <span className="text-xs text-gray-400 truncate">Álbum • {m.artista}</span>
+                  </div>
+                </div>
+              ))}
+
+              {/* SE NÃO ACHAR NADA */}
+              {musicas.filter(m => m.titulo.toLowerCase().includes(termoBusca.toLowerCase()) || m.artista.toLowerCase().includes(termoBusca.toLowerCase()) || (m.album && m.album.toLowerCase().includes(termoBusca.toLowerCase()))).length === 0 && (
+                <div className="p-4 text-center text-sm text-gray-400">Nenhum resultado encontrado.</div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Direita: Notificações e Perfil/Login */}
+        <div className="flex items-center gap-6 relative">
+          
+          <button className="text-gray-400 hover:text-white transition-colors p-1">
+            <Bell />
+          </button>
+          
+          {usuario ? (
+            /* Se estiver logado: Mostra o círculo de perfil */
+            <button 
+              onClick={() => setPerfilAberto(!perfilAberto)} 
+              className="bg-white/10 rounded-full p-1 flex items-center transition border border-transparent"
+            >
+              <div className="bg-gradient-to-tr from-[#1db954] to-blue-500 rounded-full p-1.5 hover:scale-110 transition-transform">
+                <User />
+              </div>
+            </button>
+          ) : (
+            /* Se NÃO estiver logado: Mostra o botão "Entrar" */
+            <button 
+              onClick={() => setMostrarAuth(true)}
+              className="bg-white text-black text-sm font-bold py-2 px-6 rounded-full hover:scale-105 transition-all"
+            >
+              Entrar
+            </button>
+          )}
+          
+          {perfilAberto && usuario && (
+            <div className="absolute top-12 right-0 bg-[#282828] shadow-2xl rounded-md p-1 w-48 animate-fadeIn z-50 border border-white/5">
+              <div className="p-3 border-b border-white/5">
+                <p className="text-sm font-bold">{usuario.nome}</p>
+                
+                {/* Mostra se é ADMIN ou Usuário Comum */}
+                {usuario.role === 'ADMIN' ? (
+                  <p className="text-[10px] text-red-500 font-black uppercase tracking-widest mt-1">👑 Administrador</p>
+                ) : (
+                  <p className="text-[10px] text-[#1db954] mt-1">Conta Verificada</p>
+                )}
+                
+              </div>
+              <button 
+                onClick={() => { 
+                  setUsuario(null); 
+                  setPerfilAberto(false); 
+                  setEstaCadastrando(false);
+                  setMostrarAuth(true);
+                }} 
+                className="w-full text-left p-2 text-sm text-gray-400 hover:text-white hover:bg-white/5 rounded transition-all"
+              >
+                Sair
+              </button>
+            </div>
+          )}
+        </div>
+      </header>
 
       <div className="flex flex-1 overflow-hidden px-[8px] pb-[8px] gap-[8px]">
 {/* --- AREA: SIDEBAR --- */}
+        {/* --- AREA: SIDEBAR --- */}
         <aside className={`${sidebarAberta ? 'w-64' : 'w-20'} shrink-0 bg-[#121212] flex flex-col pt-6 transition-all duration-300 ease-in-out rounded-lg overflow-hidden`}>
           
           {/* Botão Minimizar */}
@@ -346,11 +408,11 @@ const realizarLogin = async (e) => {
           {/* AREA: PLAYLISTS */}
           <div className="mt-4 pt-4 border-t border-white/5 flex flex-col gap-2 flex-1 overflow-y-auto">
             
-            {/* Cabeçalho da Biblioteca + Botão Criar */}
+            {/* Cabeçalho da Biblioteca + Botão Criar (Agora abre o Modal) */}
             <div className={`flex items-center w-full ${sidebarAberta ? 'px-6 justify-between' : 'justify-center'} mb-2`}>
               {sidebarAberta && <span className="text-xs font-bold text-gray-400 uppercase tracking-widest hover:text-white transition-colors cursor-default">Sua Biblioteca</span>}
               <button 
-                onClick={criarNovaPlaylist} 
+                onClick={() => setMostrarModalPlaylist(true)} 
                 className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-white/10 rounded-full" 
                 title="Criar Playlist"
               >
@@ -370,7 +432,7 @@ const realizarLogin = async (e) => {
                     onClick={() => setPlaylistAtiva(playlist)}
                     className={`flex items-center h-16 w-full group cursor-pointer hover:bg-white/10 transition-colors rounded-md ${sidebarAberta ? 'px-3 gap-3' : 'justify-center'} ${isAtiva ? 'bg-white/10' : ''}`}
                   >
-                    {/* Imagem da Playlist (Se vazia, mostra o ícone de nota musical num fundo cinza) */}
+                    {/* Imagem da Playlist */}
                     <div className="shrink-0 flex items-center justify-center">
                       {capa ? (
                         <img 
@@ -385,13 +447,19 @@ const realizarLogin = async (e) => {
                       )}
                     </div>
                     
-                    {/* Textos da Playlist (Só aparecem se a sidebar estiver aberta) */}
+                    {/* Textos e Ícone de Privacidade da Playlist */}
                     {sidebarAberta && (
-                      <div className="flex flex-col overflow-hidden flex-1">
-                        <span className={`font-bold truncate ${isAtiva ? 'text-[#1db954]' : 'text-gray-300 group-hover:text-white'}`}>
-                          {playlist.nome}
-                        </span>
-                        <span className="text-[11px] text-gray-500 truncate">Playlist • {playlist.musicasIds.length} músicas</span>
+                      <div className="flex flex-col overflow-hidden w-full pr-2">
+                        <div className="flex items-center justify-between">
+                          <span className={`font-bold truncate ${isAtiva ? 'text-[#1db954]' : 'text-gray-300 group-hover:text-white'}`}>
+                            {playlist.nome}
+                          </span>
+                          {/* Ícone mostrando se é Global ou Privada */}
+                          <span className="text-gray-500 shrink-0 ml-2" title={playlist.isGlobal ? 'Global' : 'Privada'}>
+                            {playlist.isGlobal ? <Globe size={14} /> : <Lock size={14} />}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-gray-500 truncate">Playlist • {playlist.musicasIds?.length || 0} músicas</span>
                       </div>
                     )}
                   </div>
@@ -407,34 +475,36 @@ const realizarLogin = async (e) => {
           
           {/* CABEÇALHO DO MAIN */}
           <div className="flex justify-between items-start mb-8 animate-fadeIn">
-
+            
             {/* Lado Esquerdo: Lógica Inteligente de Títulos */}
             {mostrarAdmin ? (
                <h2 className="text-3xl font-black mt-4">Cadastrar Nova Faixa</h2>
+            ) : termoBusca !== '' ? (
+              // --- CABEÇALHO DA TELA DE PESQUISA (ESTILO SPOTIFY) ---
+              <div className="h-40 flex flex-col justify-end">
+                <span className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">Busca</span>
+                <h2 className="text-5xl font-black text-white tracking-tighter truncate">
+                  Resultados para "{termoBusca}"
+                </h2>
+              </div>
             ) : playlistAtiva ? (
               // --- CABEÇALHO DA PLAYLIST ---
               <div className="flex items-end gap-6">
                 {pegarCapaPlaylist(playlistAtiva.musicasIds) ? (
-                  <img src={pegarCapaPlaylist(playlistAtiva.musicasIds)} className="w-56 h-56 shadow-2xl rounded transform hover:scale-105 transition-all duration-500 object-cover" alt="Capa da Playlist" />
+                  <img src={pegarCapaPlaylist(playlistAtiva.musicasIds)} className="w-56 h-56 shadow-2xl rounded transform hover:scale-105 transition-all duration-500 object-cover" alt="Capa" />
                 ) : (
                   <div className="w-56 h-56 bg-[#282828] shadow-2xl rounded flex items-center justify-center">
                     <MusicNote size={80} className="text-[#b3b3b3]" />
                   </div>
                 )}
                 <div>
-                  <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Playlist</span>
+                  <span className="text-xs font-bold uppercase tracking-widest text-gray-400 flex items-center gap-2">
+                    Playlist {playlistAtiva.isGlobal ? <Globe size={14} /> : <Lock size={14}/>}
+                  </span>
                   <h2 className="text-7xl font-black mt-2 mb-6 tracking-tighter leading-none">{playlistAtiva.nome}</h2>
-                  <p className="text-white/70 font-bold text-sm">{playlistAtiva.musicasIds.length} músicas</p>
-                </div>
-              </div>
-            ) : musicaAtual ? (
-              // --- CABEÇALHO TOCANDO AGORA ---
-              <div className="flex items-end gap-6">
-                <img src={`${API_URL}/uploads/${musicaAtual.caminhoImagem}`} className="w-56 h-56 shadow-2xl rounded transform hover:scale-105 transition-all duration-500 object-cover" alt="Capa" />
-                <div>
-                  <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Tocando Agora</span>
-                  <h2 className="text-7xl font-black mt-2 mb-6 tracking-tighter leading-none">{musicaAtual.titulo}</h2>
-                  <p className="text-white/70 font-bold text-lg">{musicaAtual.artista} • {musicaAtual.album || 'Single'}</p>
+                  <p className="text-white/70 font-bold text-sm">
+                    {playlistAtiva.isGlobal ? 'Pública (Todos podem ver)' : 'Privada'} • {playlistAtiva.musicasIds?.length || 0} músicas
+                  </p>
                 </div>
               </div>
             ) : (
@@ -455,7 +525,7 @@ const realizarLogin = async (e) => {
             )}
           </div>
 
-          {/* ÁREA DE CONTEÚDO (Formulário, Lista de Músicas ou Vazio) */}
+          {/* ÁREA DE CONTEÚDO */}
           {mostrarAdmin ? (
             <div className="max-w-2xl mx-auto animate-fadeIn mt-8">
               {/* FORMULÁRIO DE ADMIN */}
@@ -534,10 +604,9 @@ const realizarLogin = async (e) => {
                       {/* BOTÃO PARA ADICIONAR MÚSICA NA PLAYLIST */}
                       <button 
                         onClick={(e) => {
-                          e.stopPropagation(); // Impede a música de tocar ao clicar no botão
+                          e.stopPropagation(); 
                           if(playlists.length === 0) return alert("Crie uma playlist no menu lateral primeiro!");
                           
-                          // Cria um texto com as opções de playlist
                           const opcoes = playlists.map((p, idx) => `${idx + 1} - ${p.nome}`).join('\n');
                           const escolha = window.prompt(`Digite o número da playlist para adicionar '${m.titulo}':\n\n${opcoes}`);
                           const index = parseInt(escolha) - 1;
@@ -546,12 +615,7 @@ const realizarLogin = async (e) => {
                             if (!novaLista[index].musicasIds.includes(m.id)) {
                               novaLista[index].musicasIds.push(m.id);
                               setPlaylists(novaLista);
-                              
-                              // SALVA NA GAVETINHA DO USUÁRIO
-                              if (usuario) {
-                                localStorage.setItem(`playlists_${usuario.email}`, JSON.stringify(novaLista));
-                              }
-                              
+                              if (usuario) localStorage.setItem(`playlists_${usuario.email}`, JSON.stringify(novaLista));
                               alert("Música adicionada!");
                             } else {
                               alert("Essa música já está na playlist!");
@@ -567,11 +631,21 @@ const realizarLogin = async (e) => {
                   ))}
                 </>
               ) : (
-                // --- MENSAGEM QUANDO A PLAYLIST ESTÁ VAZIA ---
+                // --- MENSAGEM QUANDO VAZIO OU BUSCA NÃO ENCONTRADA ---
                 <div className="flex flex-col items-center justify-center py-20 text-gray-400 animate-fadeIn">
-                  <MusicNote size={64} className="mb-4 opacity-20" />
-                  <h3 className="text-xl font-bold text-white mb-2">Está meio vazio por aqui...</h3>
-                  <p className="text-sm">Vá para a Home e clique no ícone "+" ao lado das músicas para adicioná-las.</p>
+                  {termoBusca !== '' ? (
+                    <>
+                      <Search size={64} className="mb-4 opacity-20" />
+                      <h3 className="text-xl font-bold text-white mb-2">Nenhum resultado encontrado</h3>
+                      <p className="text-sm">Não encontramos nada para "<span className="text-white font-bold">{termoBusca}</span>".</p>
+                    </>
+                  ) : (
+                    <>
+                      <MusicNote size={64} className="mb-4 opacity-20" />
+                      <h3 className="text-xl font-bold text-white mb-2">Está meio vazio por aqui...</h3>
+                      <p className="text-sm">Vá para a Home e clique no ícone "+" ao lado das músicas para adicioná-las.</p>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -681,7 +755,50 @@ const realizarLogin = async (e) => {
       </button>
     </div>
   </div>
-)}
+)}{/* --- MODAL DE CRIAR PLAYLIST --- */}
+      {mostrarModalPlaylist && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-[#181818] w-full max-w-sm p-8 rounded-xl shadow-2xl border border-white/5 animate-fadeIn">
+            <h2 className="text-2xl font-black mb-6">Nova Playlist</h2>
+            
+            <form onSubmit={criarNovaPlaylistVisual} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold text-gray-400">Nome</label>
+                <input 
+                  type="text" 
+                  placeholder="Ex: Rock Anos 80"
+                  className="bg-[#3e3e3e] p-3 rounded-md outline-none focus:ring-2 focus:ring-[#1db954] text-white"
+                  value={novaPlaylist.nome}
+                  onChange={e => setNovaPlaylist({...novaPlaylist, nome: e.target.value})} 
+                  required 
+                />
+              </div>
+
+              {/* Toggle de Privacidade (Global ou Privada) */}
+              <div className="flex items-center justify-between bg-white/5 p-4 rounded-md mt-2">
+                <div>
+                  <p className="font-bold text-sm">Tornar Global?</p>
+                  <p className="text-xs text-gray-400">Permitir que outros usuários ouçam.</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    className="sr-only peer"
+                    checked={novaPlaylist.isGlobal}
+                    onChange={e => setNovaPlaylist({...novaPlaylist, isGlobal: e.target.checked})}
+                  />
+                  <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1db954]"></div>
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-4">
+                <button type="button" onClick={() => setMostrarModalPlaylist(false)} className="text-sm text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button type="submit" className="bg-[#1db954] text-black font-bold py-2 px-6 rounded-full hover:scale-105 transition-all">Criar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

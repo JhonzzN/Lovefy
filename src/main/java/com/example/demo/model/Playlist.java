@@ -15,6 +15,9 @@ public class Playlist {
     @Column(nullable = false, length = 100)
     private String nome;
 
+    @Column(name = "is_global", nullable = false)
+    private Boolean isGlobal = false; // Por padrão, a playlist será privada
+
     // Relacionamento: Muitas Playlists podem pertencer a Um Usuário
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)
@@ -29,6 +32,9 @@ public class Playlist {
 
     public String getNome() { return nome; }
     public void setNome(String nome) { this.nome = nome; }
+
+    public Boolean getIsGlobal() { return isGlobal; }
+    public void setIsGlobal(Boolean isGlobal) { this.isGlobal = isGlobal; }
 
     public Usuario getUsuario() { return usuario; }
     public void setUsuario(Usuario usuario) { this.usuario = usuario; }
